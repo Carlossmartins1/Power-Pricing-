@@ -65,7 +65,10 @@ class EsiosSettings(BaseModel):
 
     api_token: str | None = None
     base_url: str = "https://api.esios.ree.es"
-    geo_id: int = Field(default=3, description="3 = España peninsular en ESIOS")
+    geo_id: int = Field(default=3, description="Geografía del spot: 3 = España en ESIOS")
+    geo_id_system: int = Field(
+        default=8741, description="Geografía de desvíos y servicios de ajuste: 8741 = Península (único publicado)"
+    )
     indicator_spot: int = Field(default=600, description="Precio marginal mercado diario (OMIE)")
     indicator_imbalance_up: int = Field(default=686, description="Precio desvíos a subir (posición larga)")
     indicator_imbalance_down: int = Field(default=687, description="Precio desvíos a bajar (posición corta)")
@@ -85,6 +88,10 @@ class EsiosSettings(BaseModel):
     @property
     def is_configured(self) -> bool:
         return bool(self.api_token)
+
+    def geo_for(self, indicator_id: int) -> int:
+        """ESIOS publica el spot por país y los desvíos/servicios de ajuste solo para el sistema peninsular."""
+        return self.geo_id if indicator_id == self.indicator_spot else self.geo_id_system
 
 
 class MibgasSettings(BaseModel):
@@ -136,6 +143,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         api_token=_env_optional_str("ESIOS_API_TOKEN"),
         base_url=_env_str("ESIOS_BASE_URL", EsiosSettings.model_fields["base_url"].default),
         geo_id=_env_int("ESIOS_GEO_ID", 3),
+        geo_id_system=_env_int("ESIOS_GEO_ID_SYSTEM", 8741),
         indicator_spot=_env_int("ESIOS_INDICATOR_SPOT", 600),
         indicator_imbalance_up=_env_int("ESIOS_INDICATOR_IMBALANCE_UP", 686),
         indicator_imbalance_down=_env_int("ESIOS_INDICATOR_IMBALANCE_DOWN", 687),

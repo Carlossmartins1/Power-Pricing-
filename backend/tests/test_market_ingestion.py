@@ -82,17 +82,19 @@ class FakeResponse:
 
 
 class FakeEsiosSession(requests.Session):
-    """Simula `/indicators/{id}` con granularidad cuartohoraria (MTU15) y dos geografías."""
+    """Simula `/indicators/{id}` con granularidad cuartohoraria (MTU15): la geografía pedida y Portugal."""
 
     def __init__(self, missing_hours: int = 0) -> None:
         super().__init__()
         self.calls = 0
         self.missing_hours = missing_hours
+        self.geo_by_indicator: dict[int, str] = {}
 
     def get(self, url: str, params: Any = None, timeout: float | None = None, **_: Any) -> FakeResponse:  # type: ignore[override]
         self.calls += 1
         indicator_id = int(url.rstrip("/").split("/")[-1])
         query = dict(params)
+        self.geo_by_indicator[indicator_id] = query["geo_ids[]"]
         start = pd.Timestamp(query["start_date"])
         end = pd.Timestamp(query["end_date"])
         quarters = pd.date_range(start.floor("h"), end, freq="15min", tz="UTC")
@@ -103,13 +105,17 @@ class FakeEsiosSession(requests.Session):
         for ts in quarters:
             hourly_value = base + ts.hour  # constante dentro de la hora
             iso = ts.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            values.append({"value": hourly_value, "datetime_utc": iso, "geo_id": 3, "geo_name": "España"})
+            values.append({"value": hourly_value, "datetime_utc": iso, "geo_id": int(query["geo_ids[]"]), "geo_name": "España"})
             values.append({"value": -999.0, "datetime_utc": iso, "geo_id": 1, "geo_name": "Portugal"})
         return FakeResponse(200, {"indicator": {"id": indicator_id, "values": values}})
 
 
-def build_mibgas_workbook(year: int) -> bytes:
-    """XLSX con la estructura de MIBGAS: filas de título, cabecera desplazada, PVB/VTP y varios productos."""
+def build_mibgas_workbook(year: int, place_of_delivery: bool = False) -> bytes:
+    """XLSX con la estructura de MIBGAS: filas de título, cabecera desplazada, PVB/VTP y varios productos.
+
+    Con `place_of_delivery` reproduce el fichero actual: columna "Place of delivery" (PVB/VTP) antes de las
+    fechas de entrega y "Area" con el país (ES).
+    """
     rows: list[list[Any]] = []
     for day in pd.date_range(f"{year - 1}-12-31", f"{year}-12-30", freq="D"):
         if day.day_of_week >= 5:  # sin sesión en fin de semana
@@ -120,7 +126,11 @@ def build_mibgas_workbook(year: int) -> bytes:
         rows.append([day.strftime("%d/%m/%Y"), "GDAES_D+1", "VTP", delivery.strftime("%d/%m/%Y"), delivery.strftime("%d/%m/%Y"), pvb + 5, 300])
         rows.append([day.strftime("%d/%m/%Y"), "GMAES_M+1", "PVB", delivery.strftime("%d/%m/%Y"), delivery.strftime("%d/%m/%Y"), 99.0, 50])
     header = ["Trading day", "Product", "Area", "First Day Delivery", "Last Day Delivery", "Reference Price [EUR/MWh]", "Volume [MWh]"]
-    sheet = pd.DataFrame([["MIBGAS Trading Data"] + [None] * 6, [None] * 7, header, *rows])
+    if place_of_delivery:
+        header = ["Trading day", "Product", "Place of delivery", "Area", *header[3:]]
+        rows = [[*r[:3], "ES", *r[3:]] for r in rows]
+    width = len(header)
+    sheet = pd.DataFrame([["MIBGAS Trading Data"] + [None] * (width - 1), [None] * width, header, *rows])
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         pd.DataFrame([["Cover sheet"]]).to_excel(writer, sheet_name="Info", header=False, index=False)
@@ -278,6 +288,16 @@ def test_esios_parser_filters_geo_and_aggregates_mtu15_to_hourly() -> None:
     assert hourly.iloc[13] == pytest.approx(56.0 + 13)
 
 
+def test_esios_routes_system_indicators_to_peninsula_geo() -> None:
+    """ESIOS publica el spot por país (3) y desvíos/servicios de ajuste solo para la Península (8741)."""
+    session = FakeEsiosSession()
+    client = EsiosClient(EsiosSettings(api_token="test-token"), session=session)
+    start = datetime.fromisoformat("2025-01-01T00:00:00+00:00")
+    for indicator_id in (600, 686, 811):
+        client.fetch_indicator(indicator_id, start, start + timedelta(days=1))
+    assert session.geo_by_indicator == {600: "3", 686: "8741", 811: "8741"}
+
+
 def test_esios_requires_token() -> None:
     with pytest.raises(IngestionError, match="ESIOS_API_TOKEN"):
         EsiosClient(EsiosSettings(api_token=None))
@@ -292,6 +312,14 @@ def test_mibgas_workbook_parsing_and_weekend_fill() -> None:
     series, filled = client.fetch_pvb_day_ahead(YEAR)
     assert len(series) == 365 and not series.isna().any()
     assert filled > 0  # entregas de domingo/lunes sin sesión previa
+
+
+def test_mibgas_workbook_with_place_of_delivery_column() -> None:
+    """Fichero actual: "Place of delivery" no debe tomarse como fecha y la zona PVB se filtra en esa columna."""
+    content = build_mibgas_workbook(YEAR, place_of_delivery=True)
+    parsed = MibgasClient.parse_workbook(content, "GDAES_D+1", "PVB", YEAR)
+    assert parsed.loc[pd.Timestamp("2025-01-02")] == pytest.approx(round(30.0 + 2 / 50.0, 2))  # PVB, no VTP
+    assert parsed.max() < 99.0
 
 
 def test_live_pipeline_with_real_connectors(tmp_path: Path) -> None:

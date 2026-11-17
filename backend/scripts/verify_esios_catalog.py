@@ -146,7 +146,7 @@ def masked(token: str | None) -> str:
 
 
 def check_esios(settings: Settings, now: datetime, client: EsiosClient | None = None) -> bool:
-    print(f"\nREE ESIOS · {settings.esios.base_url} · geo_id={settings.esios.geo_id} · token {masked(settings.esios.api_token)}")
+    print(f"\nREE ESIOS · {settings.esios.base_url} · geo_id={settings.esios.geo_id} (spot), {settings.esios.geo_id_system} (desvíos y ajuste) · token {masked(settings.esios.api_token)}")
     if not settings.esios.api_token:
         print("  ✗ Falta ESIOS_API_TOKEN en el .env de la raíz del repositorio (cp .env.example .env).")
         return False

@@ -308,12 +308,13 @@ class EsiosClient:
         return series.dropna().sort_index()
 
     def _request_chunk(self, indicator_id: int, start_utc: datetime, end_utc: datetime) -> pd.Series:
+        geo_id = self._settings.geo_for(indicator_id)
         params: list[tuple[str, str]] = [
             ("start_date", start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")),
             ("end_date", end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")),
             ("time_trunc", "hour"),
             ("time_agg", "average"),
-            ("geo_ids[]", str(self._settings.geo_id)),
+            ("geo_ids[]", str(geo_id)),
         ]
         url = f"{self._settings.base_url.rstrip('/')}/indicators/{indicator_id}"
         response = self._session.get(url, params=params, timeout=self._settings.timeout_s)
@@ -325,7 +326,7 @@ class EsiosClient:
             payload = response.json()
         except ValueError as exc:
             raise IngestionError(f"ESIOS indicador {indicator_id}: JSON inválido") from exc
-        return self.parse_indicator_payload(payload, self._settings.geo_id)
+        return self.parse_indicator_payload(payload, geo_id)
 
     def fetch_catalog(self) -> pd.DataFrame:
         """Catálogo de indicadores de ESIOS (`GET /indicators`): columnas `id`, `name` y `short_name`."""
@@ -500,11 +501,17 @@ class MibgasClient:
             if not mask.any():
                 continue
             subset = table[mask]
-            area_col = next((c for c in columns if c in {"area", "zona", "market area"} or c.startswith("area")), None)
-            if area_col is not None:
+            # El fichero actual separa "Place of delivery" (PVB/VTP) de "Area" (ES/PT): se filtra por la que contenga la zona.
+            area_cols = [
+                c
+                for c in columns
+                if c in {"area", "zona", "market area", "place of delivery", "lugar de entrega"} or c.startswith("area")
+            ]
+            for area_col in area_cols:
                 area_values = subset[area_col].astype(str).str.strip().str.upper()
                 if (area_values == area.upper()).any():
                     subset = subset[area_values == area.upper()]
+                    break
             price_col = next(
                 (c for key in cls.PRICE_COLUMN_PRIORITY for c in columns if key in c and "volume" not in c),
                 None,
@@ -512,7 +519,12 @@ class MibgasClient:
             if price_col is None:
                 continue
             delivery_col = next(
-                (c for c in columns if "delivery" in c or "entrega" in c or "suministro" in c), None
+                (
+                    c
+                    for c in columns
+                    if ("delivery" in c or "entrega" in c or "suministro" in c) and "place" not in c and "lugar" not in c
+                ),
+                None,
             )
             if delivery_col is not None:
                 days = pd.to_datetime(subset[delivery_col], dayfirst=True, errors="coerce")
