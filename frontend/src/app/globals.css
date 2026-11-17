@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+/*
+ * Tokens del Quantitative Pricing Desk.
+ * Superficie pizarra azulada, tinta clara y un único acento "papel" para lo interactivo;
+ * los tonos saturados quedan reservados a los datos (paleta categórica validada sobre --color-panel).
+ */
+@theme {
+  --font-sans: "Archivo Variable", "Archivo", ui-sans-serif, system-ui, sans-serif;
+
+  --color-desk: #131c28;
+  --color-panel: #1a2533;
+  --color-raised: #223041;
+  --color-line: #2e3d50;
+  --color-line-strong: #40536b;
+
+  --color-ink: #e8edf2;
+  --color-ink-2: #aab6c3;
+  --color-ink-3: #8593a3;
+  --color-paper: #f3ead9;
+
+  --color-s1: #3987e5;
+  --color-s2: #d95926;
+  --color-s3: #199e70;
+  --color-s4: #c98500;
+  --color-s5: #d55181;
+  --color-s6: #0ca30c;
+  --color-gain: #3987e5;
+  --color-loss: #e66767;
+  --color-warn: #fab219;
+}
+
+html {
+  color-scheme: dark;
+  background: var(--color-desk);
+}
+
+body {
+  background: var(--color-desk);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+.display {
+  font-stretch: 112%;
+  letter-spacing: -0.01em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-paper);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+input[type="range"] {
+  accent-color: var(--color-paper);
+  height: 4px;
+  width: 100%;
+  cursor: pointer;
+}
+
+select,
+input[type="number"] {
+  background: var(--color-desk);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  color: var(--color-ink);
+  padding: 7px 10px;
+  width: 100%;
+}
+
+select:hover,
+input[type="number"]:hover {
+  border-color: var(--color-line-strong);
+}
+
+/* Recharts: sin contorno de foco del contenedor SVG al hacer clic */
+.recharts-wrapper:focus,
+.recharts-surface:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

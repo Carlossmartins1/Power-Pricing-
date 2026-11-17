@@ -1,0 +1,70 @@
+# Enterprise Multi-Commodity Power & Gas Pricing & Imbalance Engine: stack completo con un comando.
+#
+#   docker compose up --build
+#
+#   1. ingest     rellena el Data Warehouse (sintético por defecto) solo si el volumen está vacío y termina.
+#   2. api        FastAPI en http://localhost:8000 (documentación en /docs). Espera a que termine la ingesta.
+#   3. dashboard  Next.js en http://localhost:3000. Espera a que la API esté sana.
+#
+# Configuración: opcional, en un fichero .env en la raíz (plantilla en .env.example). Sin .env todo arranca
+# en modo sintético (MOCK_DATA=true), sin tokens ni red. Para datos reales: MOCK_DATA=false y ESIOS_API_TOKEN.
+# Regenerar el warehouse: docker compose run --rm ingest python -m app.pipelines.market_ingestion
+# Borrarlo todo:          docker compose down --volumes
+
+name: met-pricing-engine
+
+x-backend: &backend
+  build:
+    context: ./backend
+  image: met-pricing-engine/backend:local
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    WAREHOUSE_DIR: /srv/data/warehouse
+    # Orígenes del navegador que pueden llamar a la API (el dashboard publicado en el puerto 3000 del host).
+    CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+  volumes:
+    - warehouse:/srv/data/warehouse
+
+services:
+  ingest:
+    <<: *backend
+    restart: "no"
+    healthcheck:
+      disable: true # tarea de un solo uso: no escucha en el puerto 8000
+    command:
+      - sh
+      - -c
+      - |
+        if [ -f "$$WAREHOUSE_DIR/power_market.parquet" ] && [ -f "$$WAREHOUSE_DIR/gas_market.parquet" ]; then
+          echo "Data Warehouse ya poblado en $$WAREHOUSE_DIR: se omite la ingesta inicial."
+        else
+          python -m app.pipelines.market_ingestion
+        fi
+
+  api:
+    <<: *backend
+    restart: unless-stopped
+    depends_on:
+      ingest:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+
+  dashboard:
+    build:
+      context: ./frontend
+      args:
+        # URL de la API vista desde el navegador del usuario, no desde la red interna de Docker.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    image: met-pricing-engine/frontend:local
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+volumes:
+  warehouse:

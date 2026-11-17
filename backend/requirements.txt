@@ -1,0 +1,14 @@
+# Enterprise Multi-Commodity Power & Gas Pricing & Imbalance Engine - backend
+# Python >= 3.11
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30
+pandas>=3.0,<4.0
+numpy>=2.2,<3.0
+pyarrow>=18.0
+requests>=2.32
+urllib3>=2.2
+pydantic>=2.9,<3.0
+python-dotenv>=1.0
+openpyxl>=3.1
+pytest>=8.3
+httpx2>=2.0
