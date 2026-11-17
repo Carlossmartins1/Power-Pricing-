@@ -327,6 +327,31 @@ class EsiosClient:
             raise IngestionError(f"ESIOS indicador {indicator_id}: JSON inválido") from exc
         return self.parse_indicator_payload(payload, self._settings.geo_id)
 
+    def fetch_catalog(self) -> pd.DataFrame:
+        """Catálogo de indicadores de ESIOS (`GET /indicators`): columnas `id`, `name` y `short_name`."""
+        url = f"{self._settings.base_url.rstrip('/')}/indicators"
+        response = self._session.get(url, timeout=self._settings.timeout_s)
+        if response.status_code in (401, 403):
+            raise IngestionError(f"ESIOS rechazó el token (HTTP {response.status_code})")
+        if response.status_code != 200:
+            raise IngestionError(f"ESIOS catálogo de indicadores: HTTP {response.status_code}")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise IngestionError("ESIOS catálogo de indicadores: JSON inválido") from exc
+        items = payload.get("indicators") if isinstance(payload, Mapping) else None
+        if not isinstance(items, list) or not items:
+            raise IngestionError("ESIOS catálogo de indicadores: respuesta sin lista 'indicators'")
+        catalog = pd.DataFrame(items)
+        if "id" not in catalog.columns:
+            raise IngestionError("ESIOS catálogo de indicadores: entradas sin 'id'")
+        for column in ("name", "short_name"):
+            if column not in catalog.columns:
+                catalog[column] = ""
+        catalog["id"] = pd.to_numeric(catalog["id"], errors="coerce")
+        catalog = catalog.dropna(subset=["id"]).astype({"id": "int64"})
+        return catalog[["id", "name", "short_name"]].fillna("").reset_index(drop=True)
+
     def fetch_indicator(self, indicator_id: int, start_utc: datetime, end_utc: datetime) -> pd.Series:
         """Descarga un indicador troceando el rango [start, end) en ventanas de `chunk_days`."""
         chunks: list[pd.Series] = []

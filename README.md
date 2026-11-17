@@ -76,7 +76,8 @@ Power-Pricing-/
 │   │   │   ├── tariffs.py                # Modelos de cotización (electricidad y gas)
 │   │   │   └── portfolio.py              # Modelos de back-test
 │   │   └── pipelines/market_ingestion.py # Fase 1
-│   └── tests/                            # 314 tests: ingesta, pricing, regulados, casos límite, back-test y API
+│   ├── scripts/verify_esios_catalog.py   # Diagnóstico de ESIOS/MIBGAS reales con tu token
+│   └── tests/                            # 320 tests: ingesta, pricing, regulados, casos límite, back-test, API y diagnóstico
 ├── frontend/                             # Next.js (App Router) + TypeScript + Tailwind + Recharts
 │   ├── Dockerfile · .dockerignore
 │   └── src/{app,components,lib}          # lib/loadCurve.ts: lectura del CSV de curva horaria
@@ -292,7 +293,7 @@ cp .env.example .env
 cd backend
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-pytest -q                                              # 314 passed
+pytest -q                                              # 320 passed
 python -m app.pipelines.market_ingestion --year 2025   # genera los Parquet (modo sintético por defecto)
 uvicorn app.main:app --reload --port 8000              # http://localhost:8000/docs
 
@@ -326,6 +327,26 @@ cd frontend && npm install recharts lucide-react @fontsource-variable/archivo
 `.github/workflows/ci.yml` se ejecuta en cada `push` y `pull_request`: `pytest` en Python 3.11, 3.12 y 3.13 más la
 ingesta sintética; `npm run lint`, `npm run typecheck` y `npm run build` del frontend; y build, arranque y tests
 del stack con Docker Compose.
+
+### Datos reales de REE ESIOS y MIBGAS
+
+Por defecto todo funciona con el mercado sintético (`MOCK_DATA=true`). Para usar datos reales hace falta un token
+personal de ESIOS (se solicita a REE). El token va solo en el `.env` de la raíz, que `.gitignore` excluye; nunca
+en `.env.example` ni en ningún fichero versionado.
+
+```bash
+cp .env.example .env            # y rellena ESIOS_API_TOKEN=...
+cd backend
+python scripts/verify_esios_catalog.py            # token, catálogo, cada indicador configurado y fichero MIBGAS
+python scripts/verify_esios_catalog.py --ingest   # además: ingesta --live --strict y validación de los Parquet
+```
+
+El script comprueba que cada ID de `.env` (`600` spot, `686`/`687` desvíos, `807`–`815` servicios de ajuste)
+existe en el catálogo actual de ESIOS y devuelve datos de 2025. Si alguno ha cambiado, lo marca con ✗ y propone
+candidatos del catálogo para sustituirlo en `ESIOS_INDICATOR_*` / `ESIOS_ANCILLARY_*`. El token nunca se imprime.
+Con todo en verde, `python -m app.pipelines.market_ingestion --live --strict` (o `MOCK_DATA=false` en el `.env`
+antes de `docker compose up`) deja el warehouse con datos reales. Los IDs por defecto no se han podido contrastar
+en vivo desde el entorno donde se desarrolló el proyecto: el script es la verificación.
 
 ---
 
