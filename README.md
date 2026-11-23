@@ -77,7 +77,7 @@ Power-Pricing-/
 │   │   │   └── portfolio.py              # Modelos de back-test
 │   │   └── pipelines/market_ingestion.py # Fase 1
 │   ├── scripts/verify_esios_catalog.py   # Diagnóstico de ESIOS/MIBGAS reales con tu token
-│   └── tests/                            # 320 tests: ingesta, pricing, regulados, casos límite, back-test, API y diagnóstico
+│   └── tests/                            # 322 tests: ingesta, pricing, regulados, casos límite, back-test, API y diagnóstico
 ├── frontend/                             # Next.js (App Router) + TypeScript + Tailwind + Recharts
 │   ├── Dockerfile · .dockerignore
 │   └── src/{app,components,lib}          # lib/loadCurve.ts: lectura del CSV de curva horaria
@@ -273,6 +273,7 @@ docker compose up --build
 # Dashboard: http://localhost:3000 · API: http://localhost:8000/docs
 ```
 
+Los puertos se publican solo en `127.0.0.1`: el stack no es accesible desde otros equipos de tu red.
 `ingest` rellena el Data Warehouse si el volumen está vacío (sintético por defecto) y termina; `api` espera a
 que acabe y `dashboard` espera a que la API esté sana. Sin `.env` todo arranca en modo sintético; con un `.env`
 en la raíz (plantilla en `.env.example`) se usan sus valores, por ejemplo `MOCK_DATA=false` y `ESIOS_API_TOKEN`.
@@ -293,7 +294,7 @@ cp .env.example .env
 cd backend
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-pytest -q                                              # 320 passed
+pytest -q                                              # 322 passed
 python -m app.pipelines.market_ingestion --year 2025   # genera los Parquet (modo sintético por defecto)
 uvicorn app.main:app --reload --port 8000              # http://localhost:8000/docs
 

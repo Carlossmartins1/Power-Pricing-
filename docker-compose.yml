@@ -50,7 +50,7 @@ services:
       ingest:
         condition: service_completed_successfully
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000" # solo accesible desde este equipo
 
   dashboard:
     build:
@@ -64,7 +64,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000" # solo accesible desde este equipo
 
 volumes:
   warehouse:
